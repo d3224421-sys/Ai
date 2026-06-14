@@ -36,7 +36,7 @@ export default async function handler(req, res) {
     prompt += '<|start_header_id|>assistant<|end_header_id|>\n\n';
 
     const hfResponse = await fetch(
-      `https://api-inference.huggingface.co/models/${MODEL}`,
+      `https://router.huggingface.co/hf-inference/models/${MODEL}`,
       {
         method: 'POST',
         headers: {
