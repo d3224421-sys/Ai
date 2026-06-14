@@ -278,22 +278,6 @@ let feats = { research: false };
 let ttsOn = false, recording = false, recog = null, curFile = {name:'',content:''};
 let greeted = false;
 
-// Full system prompt — injected every request
-const SYSTEM_PROMPT = `You are KnGDfA Ai, an advanced AI assistant created by KangDaffa.
-
-RULES (follow strictly):
-1. ALWAYS respond in English only. Never respond in Indonesian or any other language unless the user explicitly asks you to translate.
-2. FILE GENERATION: When the user asks to create, generate, make, write, or build ANY file, script, code, or program — ALWAYS output the complete content inside a code block with the correct language tag. Examples:
-   - "make me a python script" → output full python in \`\`\`python ... \`\`\`
-   - "make it as a file" → output the code in a proper code block
-   - "create a calculator in js" → output full JS in \`\`\`js ... \`\`\`
-3. IMAGE GENERATION: You cannot generate real images. When asked, respond with a clear explanation and offer SVG/HTML alternative instead.
-4. IMAGE GENERATION: You cannot generate real images. When asked to generate an image, respond with: "I cannot generate images, but I can describe what it would look like or create an SVG/HTML visual instead. Would you like that?"
-5. Feature buttons (Summarize, File Gen, Math, Debug, etc.) will prepend English prompts — always respond to them in English.
-6. Be direct, accurate, and concise.`;
-
-const SYSTEM_PROMPT_RESEARCH = SYSTEM_PROMPT + `\n\nRESEARCH MODE ACTIVE: Give thorough, well-structured, in-depth responses with multiple perspectives and comprehensive analysis.`;
-
 // ============= GREETING =============
 let greeterDone = false;
 function greet() {
@@ -427,36 +411,14 @@ async function sendMessage() {
 
 // ============= BACKEND CALL (via Vercel proxy → HF) =============
 async function callAnthropic(msgs) {
-  const sys = feats.research ? SYSTEM_PROMPT_RESEARCH : SYSTEM_PROMPT;
-
-  // Build messages
-  const apiMsgs = msgs.map((m, idx) => {
-    if (m.role === 'user' && m._raw && idx === msgs.length - 1) {
-      const content = [];
-      m._raw.forEach(block => {
-        if (block.type === 'image') {
-          content.push({
-            type: 'image_url',
-            image_url: { url: `data:${block.source.media_type};base64,${block.source.data}` }
-          });
-        } else if (block.type === 'text') {
-          content.push({ type: 'text', text: block.text });
-        }
-      });
-      return { role: 'user', content };
-    }
-    return { role: m.role, content: m.content };
-  });
-
-  const fullMsgs = [
-    { role: 'system', content: sys },
-    ...apiMsgs
-  ];
-
+  // research flag sent to backend so it can pick the right system prompt
   const res = await fetch('https://ai-kang-daffa.vercel.app/api/chat', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ messages: fullMsgs })
+    body: JSON.stringify({
+      messages: msgs.map(m => ({ role: m.role, content: m.content })),
+      research: feats.research
+    })
   });
 
   if (!res.ok) {
