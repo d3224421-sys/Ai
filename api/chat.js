@@ -6,7 +6,7 @@ export default async function handler(req, res) {
   }
 
   const HF_TOKEN = process.env.HF_API_KEY;
-  const MODEL = process.env.HF_MODEL || 'meta-llama/Llama-3.3-70B-Instruct';
+  const MODEL = process.env.HF_MODEL || 'mistralai/Mistral-7B-Instruct-v0.3';
 
   if (!HF_TOKEN) {
     return res.status(500).json({ error: 'HF_API_KEY not set' });
@@ -22,7 +22,6 @@ export default async function handler(req, res) {
     const systemPrompt = research ? SYSTEM_PROMPT_RESEARCH : SYSTEM_PROMPT;
 
     const chatMessages = [
-      // system role dengan content string yang explicit
       { role: 'system', content: String(systemPrompt) },
       ...messages.map(msg => ({
         role: msg.role === 'user' ? 'user' : 'assistant',
