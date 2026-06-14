@@ -79,7 +79,7 @@ header{background:var(--bg2);border-bottom:1px solid var(--border);padding:10px 
 .msg-bubble{max-width:min(75%,560px);padding:10px 14px;border-radius:16px;font-size:14px;line-height:1.55;word-break:break-word;}
 .msg-row.bot .msg-bubble{background:var(--surface);border:1px solid var(--border);border-bottom-left-radius:4px;}
 .msg-row.user .msg-bubble{background:linear-gradient(135deg,var(--accent),#5b7ff5);color:#fff;border-bottom-right-radius:4px;}
-.msg-row.error .msg-bubble{background:rgba(224,82,82,.12);border:1px solid rgba(224,82,82,.3);color:var(--red);max-width:100%;}
+.msg-row.error .msg-bubble{background:rgba(224,82,82,.12);border:1px solid rgba(224,82,82,.3);color:var(--red);max-width:100%;white-space:pre-wrap;font-size:12px;}
 .msg-bubble pre{font-family:'JetBrains Mono',monospace;font-size:12px;background:var(--bg);border-radius:8px;padding:10px;overflow-x:auto;margin:8px 0;border:1px solid var(--border);}
 .msg-bubble code{font-family:'JetBrains Mono',monospace;font-size:12px;background:var(--bg);padding:2px 5px;border-radius:4px;}
 .msg-bubble strong{font-weight:600;}
@@ -487,7 +487,14 @@ async function callAnthropic(msgs) {
 
   if (!res.ok) {
     let e = 'Server error ' + res.status;
-    try { const j = await res.json(); e = j.error || j.detail || e; } catch {}
+    try {
+      const j = await res.json();
+      e = j.error || e;
+      if (Array.isArray(j.attempts)) {
+        const lines = j.attempts.map(a => `${a.model}: ${a.status}${a.message ? ' - ' + a.message : ''}`);
+        e += '\n' + lines.join('\n');
+      }
+    } catch {}
     throw new Error(e);
   }
   const data = await res.json();
