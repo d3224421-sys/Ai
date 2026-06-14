@@ -302,11 +302,21 @@ function renderHistory() {
       addUser(typeof m.content === 'string' ? m.content : '', []);
     } else {
       const txt = typeof m.content === 'string' ? m.content : '';
-      const fm = txt.match(/```(\w+)\n([\s\S]+?)```/);
-      if (fm) {
-        const ext = fm[1] || 'txt';
-        const code = fm[2];
-        addBotWithFile(txt, guessFname('', ext), code);
+      const files = parseFiles(txt);
+      if (files.length > 0) {
+        const usedNames = {};
+        const resolved = files.map(f => {
+          let fname = typeof f.fname === 'string' ? f.fname : guessFname('', f.fname.ext);
+          if (usedNames[fname]) {
+            usedNames[fname]++;
+            const dot = fname.lastIndexOf('.');
+            fname = dot > -1 ? fname.slice(0,dot)+'_'+usedNames[fname]+fname.slice(dot) : fname+'_'+usedNames[fname];
+          } else {
+            usedNames[fname] = 1;
+          }
+          return { fname, code: f.code };
+        });
+        addBotWithFiles(txt, resolved);
       } else {
         addBot(txt);
       }
@@ -412,7 +422,7 @@ async function sendMessage() {
       const contHistory = [
         ...history,
         { role: 'assistant', content: result.reply },
-        { role: 'user', content: 'Continue exactly where you left off. Do not repeat anything already written. Do not add any extra commentary, just continue the code/content directly.' }
+        { role: 'user', content: 'Your last message was cut off mid-output. Continue exactly from where it stopped, finishing the current code block only. Do not start new files, do not add summaries, explanations, or notes, and do not repeat any code already written.' }
       ];
       result = await callAnthropic(contHistory);
       chunks.push(result.reply);
@@ -429,13 +439,28 @@ async function sendMessage() {
     history.push({ role: 'assistant', content: reply });
     saveHistory();
 
-    // Auto file card: any code block in reply gets a file card
-    const fm = reply.match(/```(\w+)\n([\s\S]+?)```/);
-    if (fm) {
-      const ext = fm[1] || 'txt';
-      const code = fm[2];
-      const fname = guessFname(text, ext);
-      addBotWithFile(reply, fname, code);
+    // Auto file card(s): all code blocks in reply get file cards
+    const files = parseFiles(reply);
+    if (files.length > 0) {
+      const usedNames = {};
+      const resolved = files.map(f => {
+        let fname;
+        if (typeof f.fname === 'string') {
+          fname = f.fname;
+        } else {
+          fname = guessFname(text, f.fname.ext);
+        }
+        // avoid duplicate filenames
+        if (usedNames[fname]) {
+          usedNames[fname]++;
+          const dot = fname.lastIndexOf('.');
+          fname = dot > -1 ? fname.slice(0,dot)+'_'+usedNames[fname]+fname.slice(dot) : fname+'_'+usedNames[fname];
+        } else {
+          usedNames[fname] = 1;
+        }
+        return { fname, code: f.code };
+      });
+      addBotWithFiles(reply, resolved);
     } else {
       addBot(reply);
     }
@@ -473,33 +498,59 @@ async function callAnthropic(msgs) {
 function mergeChunks(chunks) {
   if (chunks.length === 1) return chunks[0];
 
-  // Find the language of the first code fence, if any
-  const firstFenceMatch = chunks[0].match(/```(\w*)/);
-  const lang = firstFenceMatch ? firstFenceMatch[1] : '';
-  const hasCode = !!firstFenceMatch;
-
-  if (!hasCode) {
-    // Plain text continuation, just join
-    return chunks.join('\n');
-  }
-
-  // Strip all ``` fence markers from every chunk, keep raw content
-  let bodyParts = chunks.map((c, i) => {
-    let t = c;
-    if (i === 0) {
-      // remove opening fence on first chunk
-      t = t.replace(/```\w*\n?/, '');
+  let result = chunks[0];
+  for (let i = 1; i < chunks.length; i++) {
+    let next = chunks[i];
+    // Count fences in result so far to know if we're mid-block
+    const fenceCount = (result.match(/```/g) || []).length;
+    const midBlock = fenceCount % 2 === 1;
+    if (midBlock) {
+      // strip a leading opening fence line from the continuation, if present,
+      // since we're still inside the previous code block
+      next = next.replace(/^```\w*\n?/, '');
     }
-    // remove any closing/opening fences anywhere
-    t = t.replace(/```\w*\n?/g, '');
-    t = t.replace(/```/g, '');
-    return t;
-  });
-
-  const code = bodyParts.join('').trim();
-  const intro = chunks[0].split('```')[0].trim();
-  return (intro ? intro + '\n\n' : '') + '```' + lang + '\n' + code + '\n```';
+    result += next;
+  }
+  return result;
 }
+
+// ============= PARSE MULTIPLE FILES FROM REPLY =============
+const EXT_MAP = {javascript:'js',js:'js',python:'py',py:'py',html:'html',css:'css',java:'java',cpp:'cpp',c:'c',typescript:'ts',ts:'ts',bash:'sh',sh:'sh',json:'json',markdown:'md',md:'md',txt:'txt'};
+function parseFiles(reply) {
+  const files = [];
+  const fenceRe = /```(\w*)\n([\s\S]*?)```/g;
+  let m;
+  let lastIndex = 0;
+  while ((m = fenceRe.exec(reply)) !== null) {
+    const lang = (m[1] || '').toLowerCase();
+    const code = m[2];
+    files.push(extractFileEntry(reply, lastIndex, m.index, lang, code));
+    lastIndex = fenceRe.lastIndex;
+  }
+  // Handle a trailing unclosed fence (model ran out without closing ```)
+  const remainder = reply.slice(lastIndex);
+  const openMatch = remainder.match(/```(\w*)\n([\s\S]*)$/);
+  if (openMatch) {
+    const lang = (openMatch[1] || '').toLowerCase();
+    const code = openMatch[2];
+    const fenceIdx = lastIndex + remainder.indexOf('```');
+    files.push(extractFileEntry(reply, lastIndex, fenceIdx, lang, code));
+  }
+  return files;
+}
+function extractFileEntry(reply, lastIndex, fenceIndex, lang, code) {
+  const before = reply.slice(lastIndex, fenceIndex);
+  const fnameMatch = before.match(/(?:\*\*|`)?([\w\-]+\.(?:html?|css|js|jsx|ts|tsx|py|json|md|java|cpp|c|sh|txt))(?:\*\*|`)?\s*$/i);
+  let fname;
+  if (fnameMatch) {
+    fname = fnameMatch[1];
+  } else {
+    const ext = EXT_MAP[lang] || lang || 'txt';
+    fname = { needsGuess: true, ext };
+  }
+  return { fname, code, lang };
+}
+
 
 // ============= FILE GEN =============
 function guessFname(text, ext) {
@@ -522,7 +573,8 @@ function fileIcon(n) {
 function addBotWithFile(replyText, fname, code) {
   const row = mkRow('bot');
   const bub = row.querySelector('.msg-bubble');
-  const before = replyText.replace(/```[\s\S]*?```/g,'').trim();
+  let before = replyText.replace(/```[\s\S]*?```/g,'');
+  before = before.replace(/```[\s\S]*$/g,'').trim();
   if (before) { const d=document.createElement('div'); d.innerHTML=fmtMsg(before); bub.appendChild(d); }
   const card = document.createElement('div');
   card.className = 'file-card';
@@ -537,6 +589,29 @@ function addBotWithFile(replyText, fname, code) {
   scrollD();
   if (ttsOn) speakText(before || 'File created: ' + fname);
 }
+
+function addBotWithFiles(replyText, files) {
+  const row = mkRow('bot');
+  const bub = row.querySelector('.msg-bubble');
+  let before = replyText.replace(/```[\s\S]*?```/g,'');
+  before = before.replace(/```[\s\S]*$/g,'').trim();
+  if (before) { const d=document.createElement('div'); d.innerHTML=fmtMsg(before); bub.appendChild(d); }
+  files.forEach(f => {
+    const card = document.createElement('div');
+    card.className = 'file-card';
+    card.dataset.content = f.code;
+    card.dataset.fname = f.fname;
+    card.innerHTML = `
+      <div class="file-card-icon">${fileIcon(f.fname)}</div>
+      <div class="file-card-info"><div class="file-card-name">${f.fname}</div><div class="file-card-size">${f.code.length} chars · ${f.code.split('\n').length} lines</div></div>
+      <button class="file-card-btn" onclick="openFV(this)">👁 View</button>`;
+    bub.appendChild(card);
+  });
+  document.getElementById('chatWrap').appendChild(row);
+  scrollD();
+  if (ttsOn) speakText(before || ('Files created: ' + files.map(f=>f.fname).join(', ')));
+}
+
 
 // ============= FILE VIEWER =============
 function openFV(btn) {
