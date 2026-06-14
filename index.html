@@ -487,12 +487,15 @@ async function callAnthropic(msgs) {
 
   if (!res.ok) {
     let e = 'Server error ' + res.status;
+    const raw = await res.text();
     try {
-      const j = await res.json();
+      const j = JSON.parse(raw);
       e = j.error || e;
       const detailMsg = j.detail?.error?.message;
       if (detailMsg) e += '\n' + detailMsg;
-    } catch {}
+    } catch {
+      if (raw) e += '\n' + raw.slice(0, 300);
+    }
     throw new Error(e);
   }
   const data = await res.json();
