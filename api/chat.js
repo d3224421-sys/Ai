@@ -9,34 +9,31 @@
 import { PERSONA } from './systemPrompt.js';
 
 export default async function handler(req, res) {
-  // Hanya izinkan POST
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
   const HF_TOKEN = process.env.HF_API_KEY;
-  // Model default pakai Llama 3 8B Instruct (model yang sudah di-approve di Hugging Face)
-  const MODEL = process.env.HF_MODEL || 'meta-llama/Meta-Llama-3-8B-Instruct';
+  // Llama 3.2 Vision — supports image input
+  const MODEL = process.env.HF_MODEL || 'meta-llama/Llama-3.2-11B-Vision-Instruct';
 
   if (!HF_TOKEN) {
-    return res.status(500).json({ error: 'HF_API_KEY belum diatur di environment variable' });
+    return res.status(500).json({ error: 'HF_API_KEY not set in environment variables' });
   }
 
   try {
     const { messages } = req.body;
 
     if (!messages || !Array.isArray(messages)) {
-      return res.status(400).json({ error: 'Format messages tidak valid' });
+      return res.status(400).json({ error: 'Invalid messages format' });
     }
 
-    // Susun messages format OpenAI: system + history
-    const chatMessages = [
-      { role: 'system', content: PERSONA.trim() },
-      ...messages.map(msg => ({
-        role: msg.role === 'user' ? 'user' : 'assistant',
-        content: msg.content
-      }))
-    ];
+    // Pass messages as-is — frontend already builds correct HF vision format
+    // (system msg + history with image_url blocks for vision turns)
+    const chatMessages = messages.map(msg => ({
+      role: msg.role === 'user' ? 'user' : msg.role === 'system' ? 'system' : 'assistant',
+      content: msg.content
+    }));
 
     const hfResponse = await fetch(
       'https://router.huggingface.co/v1/chat/completions',
@@ -49,7 +46,7 @@ export default async function handler(req, res) {
         body: JSON.stringify({
           model: MODEL,
           messages: chatMessages,
-          max_tokens: 512,
+          max_tokens: 1024,
           temperature: 0.7,
           top_p: 0.9
         })
@@ -61,18 +58,18 @@ export default async function handler(req, res) {
     if (!hfResponse.ok) {
       console.error('Hugging Face error:', JSON.stringify(data));
       return res.status(502).json({
-        error: 'Gagal menghubungi Hugging Face API',
+        error: 'Failed to reach Hugging Face API',
         detail: data.error || data
       });
     }
 
     const reply = data.choices?.[0]?.message?.content?.trim()
-      || 'Maaf, tidak ada balasan yang bisa diproses.';
+      || 'No response received.';
 
     return res.status(200).json({ reply });
 
   } catch (err) {
     console.error('Server error:', err);
-    return res.status(500).json({ error: 'Terjadi kesalahan pada server', detail: err.message });
+    return res.status(500).json({ error: 'Internal server error', detail: err.message });
   }
 }
