@@ -15,8 +15,8 @@ export default async function handler(req, res) {
   }
 
   const HF_TOKEN = process.env.HF_API_KEY;
-  // Model default pakai Llama 3.1 8B Instruct (lebih cepat & masih gratis lewat Inference Providers)
-  const MODEL = process.env.HF_MODEL || 'meta-llama/Meta-Llama-3.1-8B-Instruct';
+  // Model default pakai Llama 3 8B Instruct (model yang sudah di-approve di Hugging Face)
+  const MODEL = process.env.HF_MODEL || 'meta-llama/Meta-Llama-3-8B-Instruct';
 
   if (!HF_TOKEN) {
     return res.status(500).json({ error: 'HF_API_KEY belum diatur di environment variable' });
