@@ -4,10 +4,7 @@ export default async function handler(req, res) {
   }
 
   const OR_TOKEN = process.env.OPENROUTER_API_KEY;
-  const PRIMARY_MODEL = process.env.OR_MODEL || 'meta-llama/llama-3.3-70b-instruct:free';
-  const FALLBACK_MODELS = (process.env.OR_FALLBACK_MODELS || 'deepseek/deepseek-chat-v3.1:free,deepseek/deepseek-r1:free,qwen/qwen-2.5-7b-instruct:free,meta-llama/llama-4-scout:free,google/gemma-3-12b-it:free,mistralai/mistral-small-3.1-24b-instruct:free,openrouter/free')
-    .split(',').map(m => m.trim()).filter(Boolean);
-  const MODELS = [PRIMARY_MODEL, ...FALLBACK_MODELS];
+  const MODEL = process.env.OR_MODEL || 'deepseek/deepseek-chat-v3.1:free';
 
   if (!OR_TOKEN) {
     return res.status(500).json({ error: 'OPENROUTER_API_KEY not set' });
@@ -57,35 +54,18 @@ export default async function handler(req, res) {
       }))
     ];
 
-    let data, lastErr;
-    let succeeded = false;
-    const attemptLog = [];
+    const result = await callOpenRouter(MODEL, chatMessages);
 
-    for (let mi = 0; mi < MODELS.length && !succeeded; mi++) {
-      const model = MODELS[mi];
-      const result = await callOpenRouter(model, chatMessages);
-
-      if (result.ok) {
-        data = result.data;
-        succeeded = true;
-        attemptLog.push({ model, status: 'ok' });
-        break;
-      }
-
-      lastErr = result.data;
+    if (!result.ok) {
       const errMsg = result.data?.error?.message || JSON.stringify(result.data);
-      attemptLog.push({ model, status: result.status, message: errMsg });
-      console.error(`OpenRouter error on ${model} (${result.status}):`, errMsg);
-    }
-
-    if (!succeeded) {
-      console.error('All models exhausted:', JSON.stringify(attemptLog));
+      console.error(`OpenRouter error on ${MODEL} (${result.status}):`, errMsg);
       return res.status(502).json({
-        error: 'Failed to reach OpenRouter API (all models exhausted)',
-        detail: lastErr,
-        attempts: attemptLog
+        error: 'Failed to reach OpenRouter API',
+        detail: result.data
       });
     }
+
+    const data = result.data;
 
     const choice = data.choices?.[0];
     const reply = choice?.message?.content?.trim();
