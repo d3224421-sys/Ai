@@ -1,0 +1,6 @@
+{
+  "name": "kngdfa-ai-backend",
+  "version": "1.0.0",
+  "description": "Backend serverless untuk KnGDfA Ai (proxy ke Hugging Face Llama 3)",
+  "private": true
+}
