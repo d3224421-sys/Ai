@@ -1,12 +1,10 @@
-import { SYSTEM_PROMPT, SYSTEM_PROMPT_RESEARCH } from './systemPrompt.js';
-
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
   const HF_TOKEN = process.env.HF_API_KEY;
-  const MODEL = process.env.HF_MODEL || 'meta-llama/Meta-Llama-3-8B-Instruct';
+  const MODEL = process.env.HF_MODEL || 'meta-llama/Llama-3.3-70B-Instruct';
 
   if (!HF_TOKEN) {
     return res.status(500).json({ error: 'HF_API_KEY not set' });
@@ -19,10 +17,14 @@ export default async function handler(req, res) {
       return res.status(400).json({ error: 'Invalid messages format' });
     }
 
+    // Hardcode system prompt di sini, ga perlu import
+    const SYSTEM_PROMPT = process.env.SYSTEM_PROMPT || 'You are KnGDfA Ai, a helpful assistant created by KangDaffa. Always respond in English.';
+    const SYSTEM_PROMPT_RESEARCH = process.env.SYSTEM_PROMPT_RESEARCH || (SYSTEM_PROMPT + '\n\nRESEARCH MODE: Give thorough, detailed responses.');
+
     const systemPrompt = research ? SYSTEM_PROMPT_RESEARCH : SYSTEM_PROMPT;
 
     const chatMessages = [
-      { role: 'system', content: String(systemPrompt) },
+      { role: 'system', content: systemPrompt },
       ...messages.map(msg => ({
         role: msg.role === 'user' ? 'user' : 'assistant',
         content: String(msg.content || '')
