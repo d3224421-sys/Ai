@@ -5,7 +5,7 @@ export default async function handler(req, res) {
 
   const OR_TOKEN = process.env.OPENROUTER_API_KEY;
   const PRIMARY_MODEL = process.env.OR_MODEL || 'meta-llama/llama-3.3-70b-instruct:free';
-  const FALLBACK_MODELS = (process.env.OR_FALLBACK_MODELS || 'meta-llama/llama-3.1-8b-instruct:free,qwen/qwen-2.5-72b-instruct:free,mistralai/mistral-7b-instruct:free,google/gemma-2-9b-it:free,microsoft/phi-3-mini-128k-instruct:free,deepseek/deepseek-chat:free,huggingfaceh4/zephyr-7b-beta:free')
+  const FALLBACK_MODELS = (process.env.OR_FALLBACK_MODELS || 'deepseek/deepseek-chat-v3.1:free,deepseek/deepseek-r1:free,qwen/qwen-2.5-7b-instruct:free,meta-llama/llama-4-scout:free,google/gemma-3-12b-it:free,mistralai/mistral-small-3.1-24b-instruct:free,openrouter/free')
     .split(',').map(m => m.trim()).filter(Boolean);
   const MODELS = [PRIMARY_MODEL, ...FALLBACK_MODELS];
 
