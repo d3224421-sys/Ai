@@ -36,17 +36,6 @@ export default async function handler(req, res) {
     const data = await resp.json();
     return { ok: resp.ok, status: resp.status, data };
   }
-
-  // Some free/auto routes occasionally land on a moderation/guard model
-  // that replies with a safety classification instead of a real chat
-  // response (e.g. "User Safety: safe\nResponse Safety: safe").
-  // Detect that and treat it as a failed attempt so we move on.
-  function isGuardOutput(text) {
-    if (!text) return true;
-    const t = text.trim();
-    if (t.length > 400) return false;
-    return /\b(user|response)\s+safety\s*:/i.test(t) || /^(safe|unsafe)\b/i.test(t);
-  }
   
   try {
     const { messages, research } = req.body;
@@ -77,16 +66,7 @@ export default async function handler(req, res) {
 
     for (const model of MODELS) {
       result = await callOpenRouter(model, chatMessages);
-      if (result.ok) {
-        const content = result.data?.choices?.[0]?.message?.content?.trim() || '';
-        if (content && !isGuardOutput(content)) {
-          succeeded = true;
-          break;
-        }
-        lastErr = { error: { message: 'Model returned an empty or safety-classifier response' } };
-        console.error(`Model ${model} returned an invalid/guard-style response, trying next fallback`);
-        continue;
-      }
+      if (result.ok) { succeeded = true; break; }
       lastErr = result.data;
       const errMsg = result.data?.error?.message || JSON.stringify(result.data);
       console.error(`OpenRouter error on ${model} (${result.status}):`, errMsg);
@@ -94,7 +74,7 @@ export default async function handler(req, res) {
 
     if (!succeeded) {
       return res.status(502).json({
-        error: 'All models failed or returned an invalid response',
+        error: 'Failed to reach OpenRouter API',
         detail: lastErr
       });
     }
