@@ -402,11 +402,24 @@ async function sendMessage() {
   addTyping();
 
   try {
-    const result = await callAnthropic(history);
+    let chunks = [];
+    let result = await callAnthropic(history);
+    chunks.push(result.reply);
+
+    let attempts = 0;
+    while (result.truncated && attempts < 5) {
+      attempts++;
+      const contHistory = [
+        ...history,
+        { role: 'assistant', content: result.reply },
+        { role: 'user', content: 'Continue exactly where you left off. Do not repeat anything already written. Do not add any extra commentary, just continue the code/content directly.' }
+      ];
+      result = await callAnthropic(contHistory);
+      chunks.push(result.reply);
+    }
     rmTyping();
 
-    const reply = result.reply;
-    const truncated = result.truncated;
+    const reply = mergeChunks(chunks);
 
     if (!reply || typeof reply !== 'string') {
       addErr('❌ Empty response from AI. Check your HF token or try again.');
@@ -426,7 +439,7 @@ async function sendMessage() {
     } else {
       addBot(reply);
     }
-    if (truncated) toast('⚠️ Response may be cut off (token limit). Ask "continue" to get the rest.');
+    if (result.truncated) toast('⚠️ Response still cut off after retries. Ask "continue" manually for more.');
   } catch(err) {
     rmTyping();
     addErr('❌ ' + (err.message || 'Failed to connect to AI'));
@@ -454,6 +467,38 @@ async function callAnthropic(msgs) {
   }
   const data = await res.json();
   return { reply: data.reply || 'No response.', truncated: data.truncated || false };
+}
+
+// ============= MERGE CONTINUED CHUNKS =============
+function mergeChunks(chunks) {
+  if (chunks.length === 1) return chunks[0];
+
+  // Find the language of the first code fence, if any
+  const firstFenceMatch = chunks[0].match(/```(\w*)/);
+  const lang = firstFenceMatch ? firstFenceMatch[1] : '';
+  const hasCode = !!firstFenceMatch;
+
+  if (!hasCode) {
+    // Plain text continuation, just join
+    return chunks.join('\n');
+  }
+
+  // Strip all ``` fence markers from every chunk, keep raw content
+  let bodyParts = chunks.map((c, i) => {
+    let t = c;
+    if (i === 0) {
+      // remove opening fence on first chunk
+      t = t.replace(/```\w*\n?/, '');
+    }
+    // remove any closing/opening fences anywhere
+    t = t.replace(/```\w*\n?/g, '');
+    t = t.replace(/```/g, '');
+    return t;
+  });
+
+  const code = bodyParts.join('').trim();
+  const intro = chunks[0].split('```')[0].trim();
+  return (intro ? intro + '\n\n' : '') + '```' + lang + '\n' + code + '\n```';
 }
 
 // ============= FILE GEN =============
