@@ -3,11 +3,11 @@ export default async function handler(req, res) {
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
-  const HF_TOKEN = process.env.HF_API_KEY;
-  const MODEL = process.env.HF_MODEL || 'meta-llama/Llama-3.3-70B-Instruct';
+  const OR_TOKEN = process.env.OPENROUTER_API_KEY;
+  const MODEL = process.env.OR_MODEL || 'meta-llama/llama-3.3-70b-instruct:free';
 
-  if (!HF_TOKEN) {
-    return res.status(500).json({ error: 'HF_API_KEY not set' });
+  if (!OR_TOKEN) {
+    return res.status(500).json({ error: 'OPENROUTER_API_KEY not set' });
   }
 
   try {
@@ -30,13 +30,15 @@ export default async function handler(req, res) {
       }))
     ];
 
-    const hfResponse = await fetch(
-      'https://router.huggingface.co/v1/chat/completions',
+    const orResponse = await fetch(
+      'https://openrouter.ai/api/v1/chat/completions',
       {
         method: 'POST',
         headers: {
-          'Authorization': `Bearer ${HF_TOKEN}`,
-          'Content-Type': 'application/json'
+          'Authorization': `Bearer ${OR_TOKEN}`,
+          'Content-Type': 'application/json',
+          'HTTP-Referer': 'https://ai-kang-daffa.vercel.app',
+          'X-Title': 'KnGDfA Ai'
         },
         body: JSON.stringify({
           model: MODEL,
@@ -48,12 +50,12 @@ export default async function handler(req, res) {
       }
     );
 
-    const data = await hfResponse.json();
+    const data = await orResponse.json();
 
-    if (!hfResponse.ok) {
-      console.error('Hugging Face error:', JSON.stringify(data));
+    if (!orResponse.ok) {
+      console.error('OpenRouter error:', JSON.stringify(data));
       return res.status(502).json({
-        error: 'Failed to reach Hugging Face API',
+        error: 'Failed to reach OpenRouter API',
         detail: data.error || data
       });
     }
