@@ -490,10 +490,8 @@ async function callAnthropic(msgs) {
     try {
       const j = await res.json();
       e = j.error || e;
-      if (Array.isArray(j.attempts)) {
-        const lines = j.attempts.map(a => `${a.model}: ${a.status}${a.message ? ' - ' + a.message : ''}`);
-        e += '\n' + lines.join('\n');
-      }
+      const detailMsg = j.detail?.error?.message;
+      if (detailMsg) e += '\n' + detailMsg;
     } catch {}
     throw new Error(e);
   }
