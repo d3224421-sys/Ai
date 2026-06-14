@@ -272,7 +272,7 @@ function doLogout() { sessionStorage.removeItem(SK); location.reload(); }
 
 // ============= STATE =============
 const AI_AV = 'https://files.catbox.moe/xgbcc1.jpg';
-let history = [];
+let history = JSON.parse(localStorage.getItem('kngdfa_history') || '[]');
 let pendingImgs = [];
 let feats = { research: false };
 let ttsOn = false, recording = false, recog = null, curFile = {name:'',content:''};
@@ -290,9 +290,29 @@ window.addEventListener('load', () => {
   if (sessionStorage.getItem(SK)) {
     document.getElementById('loginScreen').style.display = 'none';
     document.getElementById('app').classList.add('visible');
-    greet();
+    renderHistory();
   }
 });
+
+function renderHistory() {
+  if (history.length === 0) { greet(); return; }
+  greeterDone = true;
+  history.forEach(m => {
+    if (m.role === 'user') {
+      addUser(typeof m.content === 'string' ? m.content : '', []);
+    } else {
+      const txt = typeof m.content === 'string' ? m.content : '';
+      const fm = txt.match(/```(\w+)\n([\s\S]+?)```/);
+      if (fm) {
+        const ext = fm[1] || 'txt';
+        const code = fm[2];
+        addBotWithFile(txt, guessFname('', ext), code);
+      } else {
+        addBot(txt);
+      }
+    }
+  });
+}
 
 // ============= FEATURE TOGGLES =============
 function toggleFeat(name) {
@@ -328,6 +348,7 @@ function fmtMsg(text) {
 }
 function esc(t) { return t.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
 function scrollD() { const c=document.getElementById('chatWrap'); c.scrollTop=c.scrollHeight; }
+function saveHistory() { localStorage.setItem('kngdfa_history', JSON.stringify(history)); }
 
 function addBot(text) {
   const row = mkRow('bot');
@@ -373,6 +394,7 @@ async function sendMessage() {
   addUser(text, []);
 
   history.push({ role: 'user', content: text });
+  saveHistory();
 
   inp.value = ''; resize();
   clearImgStrip();
@@ -380,8 +402,11 @@ async function sendMessage() {
   addTyping();
 
   try {
-    const reply = await callAnthropic(history);
+    const result = await callAnthropic(history);
     rmTyping();
+
+    const reply = result.reply;
+    const truncated = result.truncated;
 
     if (!reply || typeof reply !== 'string') {
       addErr('❌ Empty response from AI. Check your HF token or try again.');
@@ -389,6 +414,7 @@ async function sendMessage() {
     }
 
     history.push({ role: 'assistant', content: reply });
+    saveHistory();
 
     // Auto file card: any code block in reply gets a file card
     const fm = reply.match(/```(\w+)\n([\s\S]+?)```/);
@@ -400,6 +426,7 @@ async function sendMessage() {
     } else {
       addBot(reply);
     }
+    if (truncated) toast('⚠️ Response may be cut off (token limit). Ask "continue" to get the rest.');
   } catch(err) {
     rmTyping();
     addErr('❌ ' + (err.message || 'Failed to connect to AI'));
@@ -411,7 +438,6 @@ async function sendMessage() {
 
 // ============= BACKEND CALL (via Vercel proxy → HF) =============
 async function callAnthropic(msgs) {
-  // research flag sent to backend so it can pick the right system prompt
   const res = await fetch('https://ai-kang-daffa.vercel.app/api/chat', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -427,7 +453,7 @@ async function callAnthropic(msgs) {
     throw new Error(e);
   }
   const data = await res.json();
-  return data.reply || 'No response.';
+  return { reply: data.reply || 'No response.', truncated: data.truncated || false };
 }
 
 // ============= FILE GEN =============
@@ -526,7 +552,7 @@ function closeSB() { document.getElementById('sidebar').classList.remove('open')
 // ============= UTILS =============
 function clearChat() {
   if (!confirm('Clear all chat?')) return;
-  history=[]; document.getElementById('chatWrap').innerHTML='';
+  history=[]; localStorage.removeItem('kngdfa_history'); document.getElementById('chatWrap').innerHTML='';
   greeterDone=false; greet();
 }
 function exportChat() {
