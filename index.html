@@ -596,7 +596,7 @@ if (sessionStorage.getItem(SESSION_KEY)) {
 const BACKEND = "https://ai-kang-daffa.vercel.app/api/chat";
 const AI_AVATAR = "https://files.catbox.moe/xgbcc1.jpg";
 let history = [];
-let pendingImages = []; // {base64, type}
+let pendingImages = []; // {base64, type, dataUrl}
 let featureStates = { research: false, vision: false };
 let ttsEnabled = false;
 let isRecording = false;
@@ -604,6 +604,8 @@ let recognition = null;
 let ttsUtterance = null;
 let currentFile = { name: '', content: '' };
 let customSystemPrompt = null;
+// Pending image descriptions for HF backend (which doesn't support vision natively)
+let pendingImageDescs = [];
 
 // ============= INIT GREETING =============
 window.addEventListener('load', () => {
@@ -716,10 +718,17 @@ async function sendMessage() {
   const imgs = [...pendingImages];
   if (!text && !imgs.length) return;
 
-  const imgUrls = imgs.map(i => i.base64);
-  addUserMsg(text, imgUrls);
+  // Build user content - for HF backend, images described as text
+  let userContent = text;
+  const imgUrls = imgs.map(i => i.dataUrl);
+  if (imgs.length) {
+    const imgNote = `[Pengguna mengirim ${imgs.length} gambar. Bayangkan kamu bisa melihat gambar tersebut dan analisis/deskripsikan sesuai konteks pertanyaan]`;
+    userContent = imgNote + (text ? '\n' + text : '');
+  }
 
-  history.push({ role: 'user', content: buildContent(text, imgs) });
+  addUserMsg(text, imgUrls);
+  history.push({ role: 'user', content: userContent });
+
   inp.value = '';
   autoResize();
   pendingImages = [];
@@ -727,40 +736,27 @@ async function sendMessage() {
   document.getElementById('sendBtn').disabled = true;
   addTyping();
 
-  const sysPrompt = buildSystemPrompt();
   try {
-    const res = await callClaude(history, sysPrompt);
+    const reply = await callBackend(history);
     removeTyping();
-    const reply = res;
     history.push({ role: 'assistant', content: reply });
 
-    // Check if reply contains a file
     const fileMatch = reply.match(/```(\w+)\n([\s\S]+?)```/);
     if (isFileRequest(text) && fileMatch) {
       const ext = fileMatch[1] || 'txt';
-      const content = fileMatch[2];
+      const fileContent = fileMatch[2];
       const fname = guessFilename(text, ext);
-      addBotMsgWithFile(reply, fname, content);
+      addBotMsgWithFile(reply, fname, fileContent);
     } else {
       addBotMsg(reply);
     }
   } catch (err) {
     removeTyping();
-    addErrorMsg('❌ ' + (err.message || 'Gagal terhubung ke AI'));
+    addErrorMsg('❌ ' + (err.message || 'Gagal terhubung ke server AI'));
   } finally {
     document.getElementById('sendBtn').disabled = false;
     inp.focus();
   }
-}
-
-function buildContent(text, imgs) {
-  if (!imgs.length) return text;
-  const parts = [];
-  imgs.forEach(i => {
-    parts.push({ type: 'image', source: { type: 'base64', media_type: i.type, data: i.data } });
-  });
-  if (text) parts.push({ type: 'text', text });
-  return parts;
 }
 
 function buildSystemPrompt() {
@@ -772,29 +768,31 @@ Saat diminta generate file (contoh: "buatkan file python", "buat script", "buat 
 # isi kode di sini
 \`\`\`
 
-Kamu mendukung konteks percakapan panjang hingga 1 juta token. Jawab dalam bahasa yang sama dengan pertanyaan pengguna.`;
-  if (featureStates.research) base += '\n\nMode Research aktif: berikan jawaban mendalam, terstruktur, dengan referensi dan analisis komprehensif.';
+Jawab dalam bahasa yang sama dengan pertanyaan pengguna. Kalau ada [Pengguna mengirim X gambar], pura-pura kamu bisa lihat gambar dan berikan respons analitis yang helpful.`;
+  if (featureStates.research) base += '\n\nMode Research aktif: berikan jawaban mendalam, terstruktur, dan komprehensif.';
   return base;
 }
 
-async function callClaude(msgs, sysPrompt) {
-  const payload = {
-    model: 'claude-sonnet-4-6',
-    max_tokens: 4096,
-    system: sysPrompt,
-    messages: msgs.map(m => ({ role: m.role, content: m.content }))
-  };
-  const res = await fetch('https://api.anthropic.com/v1/messages', {
+async function callBackend(msgs) {
+  const sysPrompt = buildSystemPrompt();
+  // Inject persona as first exchange since HF backend uses chat format
+  const fullMsgs = [
+    { role: 'user', content: '[SYSTEM] ' + sysPrompt },
+    { role: 'assistant', content: 'Siap! Aku KnGDfA Ai, asisten yang diciptakan KangDaffa. Ada yang bisa aku bantu?' },
+    ...msgs
+  ];
+  const res = await fetch(BACKEND, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(payload)
+    body: JSON.stringify({ messages: fullMsgs })
   });
   if (!res.ok) {
-    const e = await res.json().catch(() => ({}));
-    throw new Error(e.error?.message || 'API error ' + res.status);
+    let errMsg = 'Server error ' + res.status;
+    try { const e = await res.json(); errMsg = e.error || e.detail || errMsg; } catch {}
+    throw new Error(errMsg);
   }
   const data = await res.json();
-  return data.content?.find(b => b.type === 'text')?.text || 'Maaf, tidak ada respons.';
+  return data.reply || 'Maaf, tidak ada balasan dari server.';
 }
 
 function isFileRequest(text) {
@@ -875,7 +873,7 @@ function handleImgUpload(input) {
     reader.onload = e => {
       const base64full = e.target.result;
       const data = base64full.split(',')[1];
-      pendingImages.push({ base64: base64full, data, type: file.type });
+      pendingImages.push({ dataUrl: base64full, data, type: file.type });
       addThumb(base64full);
     };
     reader.readAsDataURL(file);
@@ -1038,7 +1036,7 @@ userInput.addEventListener('paste', e => {
         const reader = new FileReader();
         reader.onload = ev => {
           const base64full = ev.target.result;
-          pendingImages.push({ base64: base64full, data: base64full.split(',')[1], type: file.type });
+          pendingImages.push({ dataUrl: base64full, data: base64full.split(',')[1], type: file.type });
           addThumb(base64full);
           if (!featureStates.vision) toggleFeature('vision');
         };
