@@ -85,7 +85,6 @@ header{background:var(--bg2);border-bottom:1px solid var(--border);padding:10px 
 .msg-bubble strong{font-weight:600;}
 .msg-bubble ul,.msg-bubble ol{padding-left:18px;margin:6px 0;}
 .msg-bubble li{margin-bottom:3px;}
-.chat-img{max-width:200px;border-radius:10px;border:1px solid var(--border);display:block;margin-bottom:6px;cursor:pointer;}
 .typing-dots{display:flex;gap:4px;align-items:center;padding:6px 2px;}
 .typing-dots span{width:7px;height:7px;background:var(--text3);border-radius:50%;animation:dot 1.2s infinite;}
 .typing-dots span:nth-child(2){animation-delay:.2s;}
@@ -113,10 +112,6 @@ header{background:var(--bg2);border-bottom:1px solid var(--border);padding:10px 
 .fv-body{flex:1;overflow-y:auto;padding:20px;}
 .fv-body pre{font-family:'JetBrains Mono',monospace;font-size:13px;color:var(--text);background:var(--bg3);border:1px solid var(--border);border-radius:10px;padding:16px;white-space:pre-wrap;word-break:break-word;line-height:1.6;}
 
-/* IMAGE VIEWER */
-#imgViewer{position:fixed;inset:0;z-index:950;background:rgba(0,0,0,.95);display:none;align-items:center;justify-content:center;cursor:zoom-out;}
-#imgViewer.show{display:flex;}
-#imgViewer img{max-width:92vw;max-height:88vh;border-radius:8px;}
 
 /* INPUT */
 #inputSection{background:var(--bg2);border-top:1px solid var(--border);padding:10px 12px;flex-shrink:0;}
@@ -132,11 +127,7 @@ header{background:var(--bg2);border-bottom:1px solid var(--border);padding:10px 
 @keyframes wave{from{transform:scaleY(.5);}to{transform:scaleY(1);}}
 #ttsBar{display:none;align-items:center;gap:8px;padding:5px 10px;background:rgba(79,142,247,.08);border:1px solid rgba(79,142,247,.2);border-radius:8px;margin-bottom:6px;font-size:11px;color:var(--accent);}
 #ttsBar.show{display:flex;}
-#imgPreviewStrip{display:none;gap:8px;margin-bottom:8px;overflow-x:auto;scrollbar-width:none;}
-#imgPreviewStrip::-webkit-scrollbar{display:none;}
-.prev-thumb{position:relative;flex-shrink:0;}
-.prev-thumb img{width:56px;height:56px;object-fit:cover;border-radius:8px;border:1px solid var(--border);}
-.prev-thumb .rm{position:absolute;top:-5px;right:-5px;width:16px;height:16px;background:var(--red);border-radius:50%;font-size:10px;color:#fff;display:flex;align-items:center;justify-content:center;cursor:pointer;}
+
 #inputRow{display:flex;gap:8px;align-items:flex-end;}
 #userInput{flex:1;resize:none;border:1px solid var(--border);outline:none;border-radius:12px;padding:10px 14px;background:var(--bg3);color:var(--text);font-size:14px;font-family:'Inter',sans-serif;max-height:120px;transition:border-color .2s;line-height:1.4;}
 #userInput:focus{border-color:var(--border2);}
@@ -205,7 +196,6 @@ header{background:var(--bg2);border-bottom:1px solid var(--border);padding:10px 
   </header>
 
   <div id="featureBar">
-    <div class="ftag" id="ft-vision" onclick="toggleFeat('vision')"><span>👁</span> Vision</div>
     <div class="ftag" id="ft-research" onclick="toggleFeat('research')"><span>🔭</span> Research</div>
     <div class="ftag" onclick="qp('write me a ')"><span>✍</span> Write</div>
     <div class="ftag" onclick="qp('translate this to English: ')"><span>🌐</span> Translate</div>
@@ -229,14 +219,11 @@ header{background:var(--bg2);border-bottom:1px solid var(--border);padding:10px 
       <span>🔊</span><span>AI is speaking...</span>
       <span style="margin-left:auto;cursor:pointer;color:var(--text3)" onclick="stopTTS()">✕</span>
     </div>
-    <div id="imgPreviewStrip"></div>
     <div id="inputRow">
-      <button class="tool-btn" onclick="document.getElementById('imgInput').click()" title="Send Image">📷</button>
       <button class="tool-btn" id="voiceBtn" onclick="startVoice()" title="Voice Input">🎤</button>
       <textarea id="userInput" placeholder="Message KnGDfA Ai..." rows="1"></textarea>
       <button class="send-btn" id="sendBtn" onclick="sendMessage()">➤</button>
     </div>
-    <input type="file" id="imgInput" accept="image/*" multiple onchange="handleImgUpload(this)">
   </div>
 </div>
 
@@ -259,7 +246,6 @@ header{background:var(--bg2);border-bottom:1px solid var(--border);padding:10px 
   <div class="fv-body"><pre id="fvContent"></pre></div>
 </div>
 
-<div id="imgViewer" onclick="closeIV()"><img id="ivSrc" src="" alt=""></div>
 <div id="toast"></div>
 
 <script>
@@ -288,7 +274,7 @@ function doLogout() { sessionStorage.removeItem(SK); location.reload(); }
 const AI_AV = 'https://files.catbox.moe/xgbcc1.jpg';
 let history = [];
 let pendingImgs = [];
-let feats = { research: false, vision: false };
+let feats = { research: false };
 let ttsOn = false, recording = false, recog = null, curFile = {name:'',content:''};
 let greeted = false;
 
@@ -301,7 +287,7 @@ RULES (follow strictly):
    - "make me a python script" → output full python in \`\`\`python ... \`\`\`
    - "make it as a file" → output the code in a proper code block
    - "create a calculator in js" → output full JS in \`\`\`js ... \`\`\`
-3. VISION: You can analyze images sent by the user. Describe what you see accurately. Identify memes, objects, text, screenshots, etc.
+3. IMAGE GENERATION: You cannot generate real images. When asked, respond with a clear explanation and offer SVG/HTML alternative instead.
 4. IMAGE GENERATION: You cannot generate real images. When asked to generate an image, respond with: "I cannot generate images, but I can describe what it would look like or create an SVG/HTML visual instead. Would you like that?"
 5. Feature buttons (Summarize, File Gen, Math, Debug, etc.) will prepend English prompts — always respond to them in English.
 6. Be direct, accurate, and concise.`;
@@ -398,31 +384,14 @@ function rmTyping() { document.getElementById('typing')?.remove(); }
 async function sendMessage() {
   const inp = document.getElementById('userInput');
   const text = inp.value.trim();
-  const imgs = [...pendingImgs];
-  if (!text && !imgs.length) return;
+  if (!text) return;
 
-  // Build display
-  const displayUrls = imgs.map(i => i.dataUrl);
-  addUser(text, displayUrls);
+  addUser(text, []);
 
-  // Build Anthropic-style content array for this user turn
-  let userContent = [];
-  imgs.forEach(img => {
-    userContent.push({
-      type: 'image',
-      source: { type: 'base64', media_type: img.type, data: img.data }
-    });
-  });
-  if (text) userContent.push({ type: 'text', text });
-
-  // Store in history (for multi-turn, store text summary of images)
-  const histContent = imgs.length
-    ? (imgs.map((_,i)=>`[Image ${i+1} attached]`).join(' ') + (text ? ' ' + text : ''))
-    : text;
-  history.push({ role: 'user', content: histContent, _raw: userContent });
+  history.push({ role: 'user', content: text });
 
   inp.value = ''; resize();
-  pendingImgs = []; clearImgStrip();
+  clearImgStrip();
   document.getElementById('sendBtn').disabled = true;
   addTyping();
 
@@ -460,7 +429,7 @@ async function sendMessage() {
 async function callAnthropic(msgs) {
   const sys = feats.research ? SYSTEM_PROMPT_RESEARCH : SYSTEM_PROMPT;
 
-  // Build messages with HF vision format
+  // Build messages
   const apiMsgs = msgs.map((m, idx) => {
     if (m.role === 'user' && m._raw && idx === msgs.length - 1) {
       const content = [];
@@ -551,53 +520,9 @@ function downloadFile() {
   toast('Downloaded: '+curFile.name);
 }
 
-// ============= IMAGE UPLOAD =============
-function handleImgUpload(input) {
-  Array.from(input.files).forEach(file => {
-    if (!file.type.startsWith('image/')) return;
-    const reader = new FileReader();
-    reader.onload = e => {
-      const dataUrl = e.target.result;
-      const data = dataUrl.split(',')[1];
-      pendingImgs.push({ dataUrl, data, type: file.type });
-      addThumb(dataUrl);
-      if (!feats.vision) toggleFeat('vision');
-    };
-    reader.readAsDataURL(file);
-  });
-  input.value='';
-}
-function addThumb(url) {
-  const strip = document.getElementById('imgPreviewStrip');
-  strip.style.display = 'flex';
-  const w = document.createElement('div'); w.className='prev-thumb';
-  const img = document.createElement('img'); img.src=url;
-  const rm = document.createElement('div'); rm.className='rm'; rm.textContent='✕';
-  rm.onclick = () => { pendingImgs=pendingImgs.filter(i=>i.dataUrl!==url); w.remove(); if(!pendingImgs.length) clearImgStrip(); };
-  w.appendChild(img); w.appendChild(rm); strip.appendChild(w);
-}
-function clearImgStrip() { const s=document.getElementById('imgPreviewStrip'); s.innerHTML=''; s.style.display='none'; }
+function clearImgStrip() {}
 
-// Paste image
-document.getElementById('userInput').addEventListener('paste', e => {
-  Array.from(e.clipboardData?.items||[]).forEach(item => {
-    if (!item.type.startsWith('image/')) return;
-    const file = item.getAsFile();
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = ev => {
-      const dataUrl=ev.target.result;
-      pendingImgs.push({dataUrl, data:dataUrl.split(',')[1], type:file.type});
-      addThumb(dataUrl);
-      if (!feats.vision) toggleFeat('vision');
-    };
-    reader.readAsDataURL(file);
-  });
-});
 
-// ============= IMAGE VIEWER =============
-function openIV(src) { document.getElementById('ivSrc').src=src; document.getElementById('imgViewer').classList.add('show'); }
-function closeIV() { document.getElementById('imgViewer').classList.remove('show'); }
 
 // ============= VOICE INPUT =============
 function startVoice() {
