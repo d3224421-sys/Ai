@@ -1,12 +1,5 @@
 // File: api/chat.js
-// Endpoint backend untuk KnGDfA Ai
-// Menerima: { messages: [{role: "user"/"assistant", content: "..."}] }
-// Mengembalikan: { reply: "..." }
-//
-// Menggunakan Hugging Face Inference Providers (format OpenAI-compatible):
-// https://router.huggingface.co/v1/chat/completions
-
-import { PERSONA } from './systemPrompt.js';
+import { SYSTEM_PROMPT, SYSTEM_PROMPT_RESEARCH } from './systemPrompt.js';
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
@@ -14,8 +7,6 @@ export default async function handler(req, res) {
   }
 
   const HF_TOKEN = process.env.HF_API_KEY;
-  // Llama 3.2 Vision — supports image input
-  // meta-llama/Llama-3.3-70B-Instruct — widely supported, no special provider needed
   const MODEL = process.env.HF_MODEL || 'meta-llama/Llama-3.3-70B-Instruct';
 
   if (!HF_TOKEN) {
@@ -23,18 +14,21 @@ export default async function handler(req, res) {
   }
 
   try {
-    const { messages } = req.body;
+    const { messages, research } = req.body;
 
     if (!messages || !Array.isArray(messages)) {
       return res.status(400).json({ error: 'Invalid messages format' });
     }
 
-    // Pass messages as-is — frontend already builds correct HF vision format
-    // (system msg + history with image_url blocks for vision turns)
-    const chatMessages = messages.map(msg => ({
-      role: msg.role === 'user' ? 'user' : msg.role === 'system' ? 'system' : 'assistant',
-      content: msg.content
-    }));
+    const systemPrompt = research ? SYSTEM_PROMPT_RESEARCH : SYSTEM_PROMPT;
+
+    const chatMessages = [
+      { role: 'system', content: systemPrompt },
+      ...messages.map(msg => ({
+        role: msg.role === 'user' ? 'user' : 'assistant',
+        content: msg.content
+      }))
+    ];
 
     const hfResponse = await fetch(
       'https://router.huggingface.co/v1/chat/completions',
