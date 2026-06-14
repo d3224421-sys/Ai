@@ -21,13 +21,12 @@ export default async function handler(req, res) {
 
     const systemPrompt = research ? SYSTEM_PROMPT_RESEARCH : SYSTEM_PROMPT;
 
-    // HF doesn't support system role properly — inject as first user/assistant exchange
     const chatMessages = [
-      { role: 'user', content: '[SYSTEM INSTRUCTIONS]\n' + systemPrompt },
-      { role: 'assistant', content: "Understood. I'm KnGDfA Ai, ready to help." },
+      // system role dengan content string yang explicit
+      { role: 'system', content: String(systemPrompt) },
       ...messages.map(msg => ({
         role: msg.role === 'user' ? 'user' : 'assistant',
-        content: String(msg.content)
+        content: String(msg.content || '')
       }))
     ];
 
