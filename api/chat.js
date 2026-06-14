@@ -3,6 +3,8 @@
 // Menerima: { messages: [{role: "user"/"assistant", content: "..."}] }
 // Mengembalikan: { reply: "..." }
 
+import { PERSONA } from './systemPrompt.js';
+
 export default async function handler(req, res) {
   // Hanya izinkan POST
   if (req.method !== 'POST') {
@@ -25,7 +27,7 @@ export default async function handler(req, res) {
 
     // Susun prompt dari history chat (format chat template Llama 3)
     let prompt = '<|begin_of_text|>';
-    prompt += '<|start_header_id|>system<|end_header_id|>\n\nKamu adalah KnGDfA Ai, asisten AI yang ramah, membantu, dan menjawab dalam Bahasa Indonesia.<|eot_id|>';
+    prompt += `<|start_header_id|>system<|end_header_id|>\n\n${PERSONA.trim()}<|eot_id|>`;
 
     for (const msg of messages) {
       const role = msg.role === 'user' ? 'user' : 'assistant';
