@@ -1,4 +1,3 @@
-// File: api/chat.js
 import { SYSTEM_PROMPT, SYSTEM_PROMPT_RESEARCH } from './systemPrompt.js';
 
 export default async function handler(req, res) {
@@ -10,7 +9,7 @@ export default async function handler(req, res) {
   const MODEL = process.env.HF_MODEL || 'meta-llama/Llama-3.3-70B-Instruct';
 
   if (!HF_TOKEN) {
-    return res.status(500).json({ error: 'HF_API_KEY not set in environment variables' });
+    return res.status(500).json({ error: 'HF_API_KEY not set' });
   }
 
   try {
@@ -22,11 +21,13 @@ export default async function handler(req, res) {
 
     const systemPrompt = research ? SYSTEM_PROMPT_RESEARCH : SYSTEM_PROMPT;
 
+    // HF doesn't support system role properly — inject as first user/assistant exchange
     const chatMessages = [
-      { role: 'system', content: systemPrompt },
+      { role: 'user', content: '[SYSTEM INSTRUCTIONS]\n' + systemPrompt },
+      { role: 'assistant', content: "Understood. I'm KnGDfA Ai, ready to help." },
       ...messages.map(msg => ({
         role: msg.role === 'user' ? 'user' : 'assistant',
-        content: msg.content
+        content: String(msg.content)
       }))
     ];
 
@@ -58,9 +59,7 @@ export default async function handler(req, res) {
       });
     }
 
-    const reply = data.choices?.[0]?.message?.content?.trim()
-      || 'No response received.';
-
+    const reply = data.choices?.[0]?.message?.content?.trim() || 'No response received.';
     return res.status(200).json({ reply });
 
   } catch (err) {
