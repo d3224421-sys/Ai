@@ -4,11 +4,40 @@ export default async function handler(req, res) {
   }
 
   const OR_TOKEN = process.env.OPENROUTER_API_KEY;
-  const MODEL = process.env.OR_MODEL || 'meta-llama/llama-3.3-70b-instruct:free';
+  const PRIMARY_MODEL = process.env.OR_MODEL || 'meta-llama/llama-3.3-70b-instruct:free';
+  const FALLBACK_MODELS = (process.env.OR_FALLBACK_MODELS || 'meta-llama/llama-3.1-8b-instruct:free,qwen/qwen-2.5-72b-instruct:free,mistralai/mistral-7b-instruct:free')
+    .split(',').map(m => m.trim()).filter(Boolean);
+  const MODELS = [PRIMARY_MODEL, ...FALLBACK_MODELS];
 
   if (!OR_TOKEN) {
     return res.status(500).json({ error: 'OPENROUTER_API_KEY not set' });
   }
+
+  async function callOpenRouter(model, chatMessages) {
+    const resp = await fetch(
+      'https://openrouter.ai/api/v1/chat/completions',
+      {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${OR_TOKEN}`,
+          'Content-Type': 'application/json',
+          'HTTP-Referer': 'https://ai-kang-daffa.vercel.app',
+          'X-Title': 'KnGDfA Ai'
+        },
+        body: JSON.stringify({
+          model,
+          messages: chatMessages,
+          max_tokens: 4096,
+          temperature: 0.7,
+          top_p: 0.9
+        })
+      }
+    );
+    const data = await resp.json();
+    return { ok: resp.ok, status: resp.status, data };
+  }
+
+  function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
 
   try {
     const { messages, research } = req.body;
@@ -30,33 +59,49 @@ export default async function handler(req, res) {
       }))
     ];
 
-    const orResponse = await fetch(
-      'https://openrouter.ai/api/v1/chat/completions',
-      {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${OR_TOKEN}`,
-          'Content-Type': 'application/json',
-          'HTTP-Referer': 'https://ai-kang-daffa.vercel.app',
-          'X-Title': 'KnGDfA Ai'
-        },
-        body: JSON.stringify({
-          model: MODEL,
-          messages: chatMessages,
-          max_tokens: 4096,
-          temperature: 0.7,
-          top_p: 0.9
-        })
+    let data, lastErr;
+    let succeeded = false;
+
+    for (let mi = 0; mi < MODELS.length && !succeeded; mi++) {
+      const model = MODELS[mi];
+
+      for (let attempt = 0; attempt < 2 && !succeeded; attempt++) {
+        const result = await callOpenRouter(model, chatMessages);
+
+        if (result.ok) {
+          data = result.data;
+          succeeded = true;
+          break;
+        }
+
+        lastErr = result.data;
+
+        if (result.status === 429) {
+          const retryAfter = result.data?.error?.metadata?.retry_after_seconds;
+          const waitSec = typeof retryAfter === 'number' ? Math.min(retryAfter, 6) : 3;
+
+          if (attempt === 0) {
+            // First 429: wait briefly and retry the same model once
+            console.error(`Rate limited on ${model}, retrying in ${waitSec}s`);
+            await sleep(waitSec * 1000);
+            continue;
+          } else {
+            // Still rate limited: move on to fallback model
+            console.error(`Still rate limited on ${model}, falling back`);
+            break;
+          }
+        } else {
+          // Non-429 error: don't retry this model, try next fallback
+          console.error(`OpenRouter error on ${model}:`, JSON.stringify(result.data));
+          break;
+        }
       }
-    );
+    }
 
-    const data = await orResponse.json();
-
-    if (!orResponse.ok) {
-      console.error('OpenRouter error:', JSON.stringify(data));
+    if (!succeeded) {
       return res.status(502).json({
-        error: 'Failed to reach OpenRouter API',
-        detail: data.error || data
+        error: 'Failed to reach OpenRouter API (all models exhausted)',
+        detail: lastErr
       });
     }
 
