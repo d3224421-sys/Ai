@@ -4,8 +4,10 @@ export default async function handler(req, res) {
   }
 
   const OR_TOKEN = process.env.OPENROUTER_API_KEY;
-  const MODEL = process.env.OR_MODEL || 'deepseek/deepseek-chat-v3.1:free';
-  const FALLBACK_MODEL = process.env.OR_FALLBACK_MODEL || 'qwen/qwen-2.5-7b-instruct:free';
+  const MODEL = process.env.OR_MODEL || 'qwen/qwen3-coder:free';
+  const FALLBACK_MODELS = (process.env.OR_FALLBACK_MODELS || 'deepseek/deepseek-chat-v3.1:free,openrouter/free')
+    .split(',').map(m => m.trim()).filter(Boolean);
+  const MODELS = [MODEL, ...FALLBACK_MODELS];
 
   if (!OR_TOKEN) {
     return res.status(500).json({ error: 'OPENROUTER_API_KEY not set' });
@@ -55,24 +57,22 @@ export default async function handler(req, res) {
       }))
     ];
 
-    let result = await callOpenRouter(MODEL, chatMessages);
+    let result, lastErr;
+    let succeeded = false;
 
-    if (!result.ok) {
+    for (const model of MODELS) {
+      result = await callOpenRouter(model, chatMessages);
+      if (result.ok) { succeeded = true; break; }
+      lastErr = result.data;
       const errMsg = result.data?.error?.message || JSON.stringify(result.data);
-      console.error(`OpenRouter error on ${MODEL} (${result.status}):`, errMsg);
+      console.error(`OpenRouter error on ${model} (${result.status}):`, errMsg);
+    }
 
-      // try fallback model once
-      const fbResult = await callOpenRouter(FALLBACK_MODEL, chatMessages);
-      if (fbResult.ok) {
-        result = fbResult;
-      } else {
-        const fbErrMsg = fbResult.data?.error?.message || JSON.stringify(fbResult.data);
-        console.error(`OpenRouter error on fallback ${FALLBACK_MODEL} (${fbResult.status}):`, fbErrMsg);
-        return res.status(502).json({
-          error: 'Failed to reach OpenRouter API',
-          detail: fbResult.data
-        });
-      }
+    if (!succeeded) {
+      return res.status(502).json({
+        error: 'Failed to reach OpenRouter API',
+        detail: lastErr
+      });
     }
 
     const data = result.data;
