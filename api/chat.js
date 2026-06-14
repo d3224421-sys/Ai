@@ -15,7 +15,8 @@ export default async function handler(req, res) {
 
   const HF_TOKEN = process.env.HF_API_KEY;
   // Llama 3.2 Vision — supports image input
-  const MODEL = process.env.HF_MODEL || 'meta-llama/Llama-3.2-11B-Vision-Instruct';
+  // meta-llama/Llama-3.3-70B-Instruct — widely supported, no special provider needed
+  const MODEL = process.env.HF_MODEL || 'meta-llama/Llama-3.3-70B-Instruct';
 
   if (!HF_TOKEN) {
     return res.status(500).json({ error: 'HF_API_KEY not set in environment variables' });
