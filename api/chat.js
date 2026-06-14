@@ -41,7 +41,7 @@ export default async function handler(req, res) {
         body: JSON.stringify({
           model: MODEL,
           messages: chatMessages,
-          max_tokens: 1024,
+          max_tokens: 4096,
           temperature: 0.7,
           top_p: 0.9
         })
@@ -58,8 +58,16 @@ export default async function handler(req, res) {
       });
     }
 
-    const reply = data.choices?.[0]?.message?.content?.trim() || 'No response received.';
-    return res.status(200).json({ reply });
+    const choice = data.choices?.[0];
+    const reply = choice?.message?.content?.trim();
+
+    if (!reply) {
+      console.error('Empty reply from model:', JSON.stringify(data));
+      return res.status(502).json({ error: 'Empty response from model', detail: data });
+    }
+
+    const truncated = choice?.finish_reason === 'length';
+    return res.status(200).json({ reply, truncated });
 
   } catch (err) {
     console.error('Server error:', err);
