@@ -6,7 +6,7 @@ export default async function handler(req, res) {
   }
 
   const HF_TOKEN = process.env.HF_API_KEY;
-  const MODEL = process.env.HF_MODEL || 'HuggingFaceH4/zephyr-7b-beta';
+  const MODEL = process.env.HF_MODEL || 'meta-llama/Meta-Llama-3-8B-Instruct';
 
   if (!HF_TOKEN) {
     return res.status(500).json({ error: 'HF_API_KEY not set' });
