@@ -5,7 +5,7 @@ export default async function handler(req, res) {
 
   const OR_TOKEN = process.env.OPENROUTER_API_KEY;
   const PRIMARY_MODEL = process.env.OR_MODEL || 'meta-llama/llama-3.3-70b-instruct:free';
-  const FALLBACK_MODELS = (process.env.OR_FALLBACK_MODELS || 'meta-llama/llama-3.1-8b-instruct:free,qwen/qwen-2.5-72b-instruct:free,mistralai/mistral-7b-instruct:free')
+  const FALLBACK_MODELS = (process.env.OR_FALLBACK_MODELS || 'meta-llama/llama-3.1-8b-instruct:free,qwen/qwen-2.5-72b-instruct:free,mistralai/mistral-7b-instruct:free,google/gemma-2-9b-it:free,microsoft/phi-3-mini-128k-instruct:free,deepseek/deepseek-chat:free,huggingfaceh4/zephyr-7b-beta:free')
     .split(',').map(m => m.trim()).filter(Boolean);
   const MODELS = [PRIMARY_MODEL, ...FALLBACK_MODELS];
 
@@ -36,9 +36,7 @@ export default async function handler(req, res) {
     const data = await resp.json();
     return { ok: resp.ok, status: resp.status, data };
   }
-
-  function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
-
+  
   try {
     const { messages, research } = req.body;
 
@@ -61,47 +59,31 @@ export default async function handler(req, res) {
 
     let data, lastErr;
     let succeeded = false;
+    const attemptLog = [];
 
     for (let mi = 0; mi < MODELS.length && !succeeded; mi++) {
       const model = MODELS[mi];
+      const result = await callOpenRouter(model, chatMessages);
 
-      for (let attempt = 0; attempt < 2 && !succeeded; attempt++) {
-        const result = await callOpenRouter(model, chatMessages);
-
-        if (result.ok) {
-          data = result.data;
-          succeeded = true;
-          break;
-        }
-
-        lastErr = result.data;
-
-        if (result.status === 429) {
-          const retryAfter = result.data?.error?.metadata?.retry_after_seconds;
-          const waitSec = typeof retryAfter === 'number' ? Math.min(retryAfter, 6) : 3;
-
-          if (attempt === 0) {
-            // First 429: wait briefly and retry the same model once
-            console.error(`Rate limited on ${model}, retrying in ${waitSec}s`);
-            await sleep(waitSec * 1000);
-            continue;
-          } else {
-            // Still rate limited: move on to fallback model
-            console.error(`Still rate limited on ${model}, falling back`);
-            break;
-          }
-        } else {
-          // Non-429 error: don't retry this model, try next fallback
-          console.error(`OpenRouter error on ${model}:`, JSON.stringify(result.data));
-          break;
-        }
+      if (result.ok) {
+        data = result.data;
+        succeeded = true;
+        attemptLog.push({ model, status: 'ok' });
+        break;
       }
+
+      lastErr = result.data;
+      const errMsg = result.data?.error?.message || JSON.stringify(result.data);
+      attemptLog.push({ model, status: result.status, message: errMsg });
+      console.error(`OpenRouter error on ${model} (${result.status}):`, errMsg);
     }
 
     if (!succeeded) {
+      console.error('All models exhausted:', JSON.stringify(attemptLog));
       return res.status(502).json({
         error: 'Failed to reach OpenRouter API (all models exhausted)',
-        detail: lastErr
+        detail: lastErr,
+        attempts: attemptLog
       });
     }
 
