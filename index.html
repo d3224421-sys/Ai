@@ -429,6 +429,12 @@ async function sendMessage() {
   try {
     const reply = await callAnthropic(history);
     rmTyping();
+
+    if (!reply || typeof reply !== 'string') {
+      addErr('❌ Empty response from AI. Check your HF token or try again.');
+      return;
+    }
+
     history.push({ role: 'assistant', content: reply });
 
     // Auto file card: any code block in reply gets a file card
@@ -449,33 +455,6 @@ async function sendMessage() {
     inp.focus();
   }
 }
-
-// ============= HUGGING FACE API CALL =============
-async function callAnthropic(msgs) {
-  const sys = feats.research ? SYSTEM_PROMPT_RESEARCH : SYSTEM_PROMPT;
-
-  // Build messages — use _raw (with image blocks) for last user msg if available
-  const apiMsgs = [
-    { role: 'system', content: sys },
-    ...msgs.map((m, idx) => {
-      if (m.role === 'user' && m._raw && idx === msgs.length - 1) {
-        // HF vision format: content array with image_url + text
-        const content = [];
-        m._raw.forEach(block => {
-          if (block.type === 'image') {
-            content.push({
-              type: 'image_url',
-              image_url: { url: `data:${block.source.media_type};base64,${block.source.data}` }
-            });
-          } else if (block.type === 'text') {
-            content.push({ type: 'text', text: block.text });
-          }
-        });
-        return { role: 'user', content };
-      }
-      return { role: m.role, content: m.content };
-    })
-  ];
 
 // ============= BACKEND CALL (via Vercel proxy → HF) =============
 async function callAnthropic(msgs) {
@@ -518,7 +497,6 @@ async function callAnthropic(msgs) {
   }
   const data = await res.json();
   return data.reply || 'No response.';
-}
 }
 
 // ============= FILE GEN =============
